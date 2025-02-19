@@ -95,7 +95,9 @@ static std::vector<std::set<int>> bins_11_neighbors;
 
 
 std::vector<int> binNeighbors(int bin_index, double size) {
-    std::vector<int> neighbors(9);
+    std::vector<int> neighbors;
+    neighbors.reserve(9);
+
     int nbins = size/cutoff;
     int row = bin_index / nbins;
     int col = bin_index % nbins;
