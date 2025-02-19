@@ -199,7 +199,7 @@ inline void simulate_one_step_shift_grid(particle_t* parts, const int& num_parts
 
     // todo: index recalculated in every iteration
     // todo: go through grid in blocks for better cache performance 
-    #pragma omp parallel for schedule(dynamic) collapse(2)
+    #pragma omp parallel for schedule(dynamic) collapse(2) 
     for (size_t i = h_shift; i < nbins; i += 2) {
         for (size_t j = v_shift; j < nbins; j += 2) {
             size_t bin_index = i + j * nbins;
@@ -267,10 +267,12 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     }
     */
 
-    simulate_one_step_shift_grid(parts, num_parts, size, 0, 0);
-    simulate_one_step_shift_grid(parts, num_parts, size, 1, 0);
-    simulate_one_step_shift_grid(parts, num_parts, size, 0, 1);
-    simulate_one_step_shift_grid(parts, num_parts, size, 1, 1);
+   #pragma omp single {
+        simulate_one_step_shift_grid(parts, num_parts, size, 0, 0);
+        simulate_one_step_shift_grid(parts, num_parts, size, 1, 0);
+        simulate_one_step_shift_grid(parts, num_parts, size, 0, 1);
+        simulate_one_step_shift_grid(parts, num_parts, size, 1, 1);
+   }
     
     // Move Particles
     #pragma omp schedule(static) for collapse(2) shared (movers)
