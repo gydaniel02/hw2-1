@@ -267,7 +267,8 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     }
     */
 
-   #pragma omp single {
+   #pragma omp single 
+   {
         simulate_one_step_shift_grid(parts, num_parts, size, 0, 0);
         simulate_one_step_shift_grid(parts, num_parts, size, 1, 0);
         simulate_one_step_shift_grid(parts, num_parts, size, 0, 1);
