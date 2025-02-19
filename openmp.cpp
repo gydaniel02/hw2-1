@@ -21,9 +21,9 @@ void apply_force(particle_t& particle, particle_t& neighbor) {
 
     // Very simple short-range repulsive force
     double coef = (1 - cutoff / r) / r2 / mass;
-    //#pragma omp atomic
+    #pragma omp atomic
     particle.ax += coef * dx;
-    //#pragma omp atomic
+    #pragma omp atomic
     particle.ay += coef * dy;
 }
 double get_ax(particle_t& particle, particle_t& neighbor) {
@@ -155,7 +155,6 @@ std::vector<int> binNeighbors(int bin_index, double size) {
     return neighbors;
 }
 // Initialize globals
-std::vector<std::pair<int,int>> movers;
 std::vector<std::vector<int>> neighbors;
 
 void init_simulation(particle_t* parts, int num_parts, double size) {
@@ -187,42 +186,33 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     //std::vector<int> neighbors(9);
     // Compute forces
     // For every bin
-    
+    #pragma omp scedule(static) for
+    for (int i = 0; i < num_parts; ++i) {
+        parts[i].ax = parts[i].ay = 0;
+    }
     #pragma omp schedule(dynamic) for collapse(4)
     for (int ii = 0; ii < nbins*nbins; ii++) {
         // For each particle in bin
         for (int i : bins[ii]) {
             // Set particle acceleration to 0
-            parts[i].ax = parts[i].ay = 0;
-            double ax,ay;
             // For each neighboring bin
             for (int jj : neighbors[ii]) {
                 // For each particle in neighboring bin
                 for (int j : bins[jj]) {
                     // Apply force on original particle
                     apply_force(parts[i],parts[j]);
-                    // ax = get_ax(parts[i],parts[j]);
-                    // ay = get_ay(parts[i],parts[j]);
                 }
             }
-            // #pragma omp single
-            // {
-            //     parts[i].ax = ax;
-            //     parts[i].ay = ay;
-            // }
         }
     }
-    
+    std::vector<std::pair<int,int>> movers;
     // Move Particles
-    #pragma omp schedule(static) for collapse(2) shared (movers)
+    #pragma omp schedule(static) for collapse(2)
     for (int ii = 0; ii < nbins*nbins; ii++) {
         for (const int& i : bins[ii]) {
             int binrow_ini = parts[i].y / bin_size;
             int bincol_ini = parts[i].x / bin_size;
-            #pragma omp critical
-            {
-                move(parts[i], size);
-            }
+            move(parts[i], size);
             int binrow_fin = parts[i].y / bin_size;
             int bincol_fin = parts[i].x / bin_size;
             #pragma omp critical 
@@ -235,13 +225,14 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
         }
     }
     // Update bins
-    #pragma omp single
-    {
-        for (std::pair<int,int> i : movers) {
-            bins[i.second].erase(i.first);
-            int binrow = parts[i.first].y / bin_size;
-            int bincol = parts[i.first].x / bin_size;
-            bins[bincol + nbins*binrow].insert(i.first);
+    for (std::pair<int,int> i : movers) {
+        #pragma omp critical
+        {
+        bins[i.second].erase(i.first);
+        int binrow = parts[i.first].y / bin_size;
+        int bincol = parts[i.first].x / bin_size;
+        bins[bincol + nbins*binrow].insert(i.first);
         }
     }
+    #pragma omp barrier
 }
