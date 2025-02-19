@@ -202,8 +202,8 @@ inline void simulate_one_step_shift_grid(particle_t* parts, const int& num_parts
         for (size_t j = v_shift; j < nbins; j += 2) {
             size_t index = i + j * nbins;
 
-            parts[i].ax = 0;
-            parts[i].ay = 0;
+            parts[index].ax = 0;
+            parts[index].ay = 0;
 
             for (size_t h = -1; h <= 1; ++h) {
                 for (size_t v = -1; v <= 1; ++v) {
