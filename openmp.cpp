@@ -80,7 +80,18 @@ void move(particle_t& p, double size) {
         p.vy = -p.vy;
     }
 }
+
 static std::vector<std::set<int>> bins;
+
+static std::vector<std::set<int>> bins_00;
+static std::vector<std::set<int>> bins_01;
+static std::vector<std::set<int>> bins_10;
+static std::vector<std::set<int>> bins_11;
+
+static std::vector<std::set<int>> bins_00_neighbors;
+static std::vector<std::set<int>> bins_01_neighbors;
+static std::vector<std::set<int>> bins_10_neighbors;
+static std::vector<std::set<int>> bins_11_neighbors;
 
 
 std::vector<int> binNeighbors(int bin_index, double size) {
@@ -180,6 +191,48 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
 }
 
 
+inline void simulate_one_step_shift_grid(particle_t* parts, const int& num_parts, const double& size, const int& h_shift, const int& v_shift) {
+    double bin_size = cutoff;
+    int nbins = size/bin_size;
+
+    // todo: index recalculated in every iteration
+    // todo: go through grid in blocks for better cache performance 
+    #pragma omp parallel for schedule(dynamic) collapse(2)
+    for (size_t i = h_shift; i < nbins; i += 2) {
+        for (size_t j = v_shift; j < nbins; j += 2) {
+            size_t index = i + j * nbins;
+
+            parts[i].ax = 0;
+            parts[i].ay = 0;
+
+            for (size_t h = -1; h <= 1; ++h) {
+                for (size_t v = -1; v <= 1; ++v) {
+                    size_t n_i = i + h, n_j = j + v;
+
+                    if (n_i < 0 || n_i >= nbins || n_j < 0 || n_j >= nbins) continue;
+
+                    size_t neighbor = index + h + v * nbins;
+
+                    for (const auto& particle : bins[neighbor]) {
+                        apply_force(parts[particle], parts[index]);
+                    }
+                }
+            }
+
+            /*
+            for (const auto& neighbor : neighbors[index]) {
+                for (const auto& particle : bins[neighbor]) {
+                    apply_force(parts[particle], parts[index]);
+                }
+            }
+            */
+
+        }
+    }
+
+}
+
+
 
 void simulate_one_step(particle_t* parts, int num_parts, double size) {
     int nbins = size/cutoff;
@@ -188,6 +241,8 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     // Compute forces
     // For every bin
     
+
+    /*
     #pragma omp schedule(dynamic) for collapse(4)
     for (int ii = 0; ii < nbins*nbins; ii++) {
         // For each particle in bin
@@ -212,6 +267,12 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
             // }
         }
     }
+    */
+
+    simulate_one_step_shift_grid(parts, num_parts, size, 0, 0);
+    simulate_one_step_shift_grid(parts, num_parts, size, 1, 0);
+    simulate_one_step_shift_grid(parts, num_parts, size, 0, 1);
+    simulate_one_step_shift_grid(parts, num_parts, size, 1, 1);
     
     // Move Particles
     #pragma omp schedule(static) for collapse(2) shared (movers)
