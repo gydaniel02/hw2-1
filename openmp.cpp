@@ -200,35 +200,31 @@ inline void simulate_one_step_shift_grid(particle_t* parts, const int& num_parts
     #pragma omp parallel for schedule(dynamic) collapse(2)
     for (size_t i = h_shift; i < nbins; i += 2) {
         for (size_t j = v_shift; j < nbins; j += 2) {
-            size_t index = i + j * nbins;
+            size_t bin_index = i + j * nbins;
+            // For each particle in the bin
+            for (auto particle_idx : bins[bin_index]) {
 
-            parts[index].ax = 0;
-            parts[index].ay = 0;
-
-            for (int h = -1; h <= 1; ++h) {
-                for (int v = -1; v <= 1; ++v) {
-                    int n_i = i + h, n_j = j + v;
-
-                    if (n_i < 0 || n_i >= nbins || n_j < 0 || n_j >= nbins) continue;
-
-                    size_t neighbor = index + h + v * nbins;
-
-                    for (const auto& particle : bins[neighbor]) {
-                        apply_force(parts[particle], parts[index]);
+                parts[particle_idx].ax = 0;
+                parts[particle_idx].ay = 0;
+                
+                // Iterate over all neighboring bins
+                for (int h = -1; h <= 1; ++h) {
+                    for (int v = -1; v <= 1; ++v) {
+                        int n_i = i + h;
+                        int n_j = j + v;
+                        if (n_i < 0 || n_i >= nbins || n_j < 0 || n_j >= nbins)
+                            continue;
+                        int neighbor_bin = n_i + n_j * nbins;
+                        // For each particle in the neighbor bin
+                        for (auto neighbor_particle_idx : bins[neighbor_bin]) {
+                            apply_force(parts[particle_idx], parts[neighbor_particle_idx]);
+                        }
                     }
                 }
             }
-
-            /*
-            for (const auto& neighbor : neighbors[index]) {
-                for (const auto& particle : bins[neighbor]) {
-                    apply_force(parts[particle], parts[index]);
-                }
-            }
-            */
-
         }
     }
+
 
 }
 
