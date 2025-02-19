@@ -206,7 +206,7 @@ inline void simulate_one_step_shift_grid(particle_t* parts, const int& num_parts
 
                 parts[particle_idx].ax = 0;
                 parts[particle_idx].ay = 0;
-                
+
                 // Iterate over all neighboring bins
                 for (int h = -1; h <= 1; ++h) {
                     for (int v = -1; v <= 1; ++v) {
@@ -301,4 +301,6 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
             bins[bincol + nbins*binrow].insert(i.first);
         }
     }
+
+    movers.clear();
 }
