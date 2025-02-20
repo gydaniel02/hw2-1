@@ -26,10 +26,10 @@ void apply_force(particle_t& particle, particle_t& neighbor) {
     #pragma omp atomic
     particle.ay += coef * dy;
 }
-double get_ax(particle_t& particle, particle_t& neighbor) {
+double get_ax(double particlex, double particley, double neighborx, double neighbory) {
     // Calculate Distance
-    double dx = neighbor.x - particle.x;
-    double dy = neighbor.y - particle.y;
+    double dx = neighborx - particlex;
+    double dy = neighbory - particley;
     double r2 = dx * dx + dy * dy;
 
     // Check if the two particles should interact
@@ -43,10 +43,10 @@ double get_ax(particle_t& particle, particle_t& neighbor) {
     double coef = (1 - cutoff / r) / r2 / mass;
     return coef * dx;
 }
-double get_ay(particle_t& particle, particle_t& neighbor) {
+double get_ay(double particlex, double particley, double neighborx, double neighbory) {
     // Calculate Distance
-    double dx = neighbor.x - particle.x;
-    double dy = neighbor.y - particle.y;
+    double dx = neighborx - particlex;
+    double dy = neighbory - particley;
     double r2 = dx * dx + dy * dy;
 
     // Check if the two particles should interact
@@ -186,7 +186,7 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     //std::vector<int> neighbors(9);
     // Compute forces
     // For every bin
-    #pragma omp scedule(static) for
+    #pragma omp schedule(static) for
     for (int i = 0; i < num_parts; ++i) {
         parts[i].ax = parts[i].ay = 0;
     }
@@ -199,8 +199,16 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
             for (int jj : neighbors[ii]) {
                 // For each particle in neighboring bin
                 for (int j : bins[jj]) {
+                    double px = parts[i].x;
+                    double py = parts[i].y;
+                    double nx = parts[j].x;
+                    double ny = parts[j].y;
                     // Apply force on original particle
-                    apply_force(parts[i],parts[j]);
+                    //apply_force(parts[i],parts[j]);
+                    double ax = get_ax(px,py,nx,ny);
+                    double ay = get_ay(px,py,nx,ny);
+                    parts[i].ax += ax;
+                    parts[i].ay += ay;
                 }
             }
         }
