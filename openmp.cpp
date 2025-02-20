@@ -4,6 +4,7 @@
 #include <math.h>
 #include <vector>
 #include <set>
+#include <iostream>
 
 // Put any static global variables here that you will use throughout the simulation.
 void apply_force(particle_t& particle, particle_t& neighbor) {
@@ -183,56 +184,43 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
 void simulate_one_step(particle_t* parts, int num_parts, double size) {
     int nbins = size/cutoff;
     double bin_size = size/nbins;
+    int id = omp_get_thread_num();
+    int numthreads = omp_get_num_threads();
     //std::vector<int> neighbors(9);
     // Compute forces
     // For every bin
-    #pragma omp schedule(static) for
-    for (int i = 0; i < num_parts; ++i) {
-        parts[i].ax = parts[i].ay = 0;
-    }
-    #pragma omp schedule(dynamic) for collapse(4)
+    #pragma omp for schedule(static)
     for (int ii = 0; ii < nbins*nbins; ii++) {
         // For each particle in bin
         for (int i : bins[ii]) {
             // Set particle acceleration to 0
+            parts[i].ax = parts[i].ay = 0;
             // For each neighboring bin
             for (int jj : neighbors[ii]) {
                 // For each particle in neighboring bin
                 for (int j : bins[jj]) {
-                    double px = parts[i].x;
-                    double py = parts[i].y;
-                    double nx = parts[j].x;
-                    double ny = parts[j].y;
                     // Apply force on original particle
-                    //apply_force(parts[i],parts[j]);
-                    double ax = get_ax(px,py,nx,ny);
-                    double ay = get_ay(px,py,nx,ny);
-                    parts[i].ax += ax;
-                    parts[i].ay += ay;
+                    apply_force(parts[i],parts[j]);
                 }
             }
         }
     }
     std::vector<std::pair<int,int>> movers;
     // Move Particles
-    #pragma omp schedule(static) for collapse(2)
-    for (int ii = 0; ii < nbins*nbins; ii++) {
-        for (const int& i : bins[ii]) {
-            int binrow_ini = parts[i].y / bin_size;
-            int bincol_ini = parts[i].x / bin_size;
-            move(parts[i], size);
-            int binrow_fin = parts[i].y / bin_size;
-            int bincol_fin = parts[i].x / bin_size;
-            #pragma omp critical 
-            {
-                if (binrow_ini != binrow_fin || bincol_ini != bincol_fin) {
-                    std::pair<int,int> temp(i,bincol_ini + binrow_ini*nbins);
-                    movers.push_back(temp);
-                }
-            }
+    #pragma omp for schedule(static)
+    for (int i = 0; i < num_parts; ++i) {
+        int binrow_ini = parts[i].y / bin_size;
+        int bincol_ini = parts[i].x / bin_size;
+        move(parts[i], size);
+        int binrow_fin = parts[i].y / bin_size;
+        int bincol_fin = parts[i].x / bin_size;
+        if (binrow_ini != binrow_fin || bincol_ini != bincol_fin) {
+            std::pair<int,int> temp(i,bincol_ini + binrow_ini*nbins);
+            movers.push_back(temp);
         }
     }
-    // Update bins
+    
+    //Update bins
     for (std::pair<int,int> i : movers) {
         #pragma omp critical
         {
