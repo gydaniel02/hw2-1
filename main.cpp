@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
     // Initialize Particles
     int num_parts = find_int_arg(argc, argv, "-n", 1000);
     int part_seed = find_int_arg(argc, argv, "-s", 0);
-    double bin_size = find_int_arg(argc, argv, "-bs", 0.1);
+    double bin_size = find_int_arg(argc, argv, "-bs", 10);
     int block_size = find_int_arg(argc, argv, "-bls", 8);
     double size = sqrt(density * num_parts);
 
@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
     // Algorithm
     auto start_time = std::chrono::steady_clock::now();
 
-    init_simulation(parts, num_parts, size, bin_size, block_size);
+    init_simulation(parts, num_parts, size, bin_size / 100.0, block_size);
 
 #ifdef _OPENMP
 #pragma omp parallel default(shared)
