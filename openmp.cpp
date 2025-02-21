@@ -1,311 +1,186 @@
-#include "common.h"
-#include <omp.h>
+//#include <omp.h>
 #include <cmath>
-#include <math.h>
 #include <vector>
-#include <set>
+#include <iostream>
 
-// Put any static global variables here that you will use throughout the simulation.
-void apply_force(particle_t& particle, particle_t& neighbor) {
-    // Calculate Distance
-    double dx = neighbor.x - particle.x;
-    double dy = neighbor.y - particle.y;
+// Particle structure with cache alignment
+struct alignas(64) particle_t {
+    double x, y, vx, vy, ax, ay;
+};
+
+// Global constants
+constexpr double CUTOFF = 0.01;
+constexpr double min_r = 0.0001;
+constexpr double mass = 1.0;
+constexpr double dt = 0.0005;
+
+// Global variables
+std::vector<std::vector<int>> bins_morton;
+std::vector<std::vector<unsigned int>> neighbors_morton;
+std::vector<unsigned int> particle_bins;
+
+// Inline Morton Encoding
+inline unsigned int mortonEncode(unsigned int x, unsigned int y) {
+    unsigned int z = 0;
+    for (unsigned int i = 0; i < sizeof(unsigned int) * 8 / 2; ++i) {
+        z |= (x & (1u << i)) << i | (y & (1u << i)) << (i + 1);
+    }
+    return z;
+}
+
+// Inline Remove from Bin
+inline void remove_from_bin(std::vector<int>& bin, int particle_idx) {
+    for (size_t k = 0; k < bin.size(); ++k) {
+        if (bin[k] == particle_idx) {
+            bin[k] = bin.back();
+            bin.pop_back();
+            return;
+        }
+    }
+}
+
+// Inline Apply Force Locally
+inline void apply_force_local(const particle_t* __restrict particle, 
+                             const particle_t* __restrict neighbor, 
+                             double& ax_local, double& ay_local) {
+    double dx = neighbor->x - particle->x;
+    double dy = neighbor->y - particle->y;
     double r2 = dx * dx + dy * dy;
-
-    // Check if the two particles should interact
-    if (r2 > cutoff * cutoff)
-        return;
-
-    r2 = fmax(r2, min_r * min_r);
-    double r = sqrt(r2);
-
-    // Very simple short-range repulsive force
-    double coef = (1 - cutoff / r) / r2 / mass;
-    //#pragma omp atomic
-    particle.ax += coef * dx;
-    //#pragma omp atomic
-    particle.ay += coef * dy;
-}
-double get_ax(particle_t& particle, particle_t& neighbor) {
-    // Calculate Distance
-    double dx = neighbor.x - particle.x;
-    double dy = neighbor.y - particle.y;
-    double r2 = dx * dx + dy * dy;
-
-    // Check if the two particles should interact
-    if (r2 > cutoff * cutoff)
-        return 0;
-
-    r2 = fmax(r2, min_r * min_r);
-    double r = sqrt(r2);
-
-    // Very simple short-range repulsive force
-    double coef = (1 - cutoff / r) / r2 / mass;
-    return coef * dx;
-}
-double get_ay(particle_t& particle, particle_t& neighbor) {
-    // Calculate Distance
-    double dx = neighbor.x - particle.x;
-    double dy = neighbor.y - particle.y;
-    double r2 = dx * dx + dy * dy;
-
-    // Check if the two particles should interact
-    if (r2 > cutoff * cutoff)
-        return 0;
-
-    r2 = fmax(r2, min_r * min_r);
-    double r = sqrt(r2);
-
-    // Very simple short-range repulsive force
-    double coef = (1 - cutoff / r) / r2 / mass;
-    return coef * dy;
+    if (r2 > CUTOFF * CUTOFF) return;
+    r2 = std::fmax(r2, min_r * min_r);
+    double r = std::sqrt(r2);
+    double coef = (1 - CUTOFF / r) / r2 / mass;
+    ax_local += coef * dx;
+    ay_local += coef * dy;
 }
 
-void move(particle_t& p, double size) {
-    // Slightly simplified Velocity Verlet integration
-    // Conserves energy better than explicit Euler method
-    p.vx += p.ax * dt;
-    p.vy += p.ay * dt;
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-
-    // Bounce from walls
-    while (p.x < 0 || p.x > size) {
-        p.x = p.x < 0 ? -p.x : 2 * size - p.x;
-        p.vx = -p.vx;
+// Inline Move Particle
+inline void move(particle_t* __restrict p, double size) {
+    p->vx += p->ax * dt;
+    p->vy += p->ay * dt;
+    p->x += p->vx * dt;
+    p->y += p->vy * dt;
+    while (p->x < 0 || p->x > size) {
+        p->x = p->x < 0 ? -p->x : 2 * size - p->x;
+        p->vx = -p->vx;
     }
-
-    while (p.y < 0 || p.y > size) {
-        p.y = p.y < 0 ? -p.y : 2 * size - p.y;
-        p.vy = -p.vy;
+    while (p->y < 0 || p->y > size) {
+        p->y = p->y < 0 ? -p->y : 2 * size - p->y;
+        p->vy = -p->vy;
     }
 }
 
-static std::vector<std::set<int>> bins;
+// Initialize Simulation
+void init_simulation(particle_t* __restrict parts, int num_parts, double size) {
+    int nbins = static_cast<int>(size / CUTOFF);
+    double bin_size = size / nbins;
+    bins_morton.resize(nbins * nbins);
+    neighbors_morton.resize(nbins * nbins);
+    particle_bins.resize(num_parts);
 
-static std::vector<std::set<int>> bins_00;
-static std::vector<std::set<int>> bins_01;
-static std::vector<std::set<int>> bins_10;
-static std::vector<std::set<int>> bins_11;
-
-static std::vector<std::set<int>> bins_00_neighbors;
-static std::vector<std::set<int>> bins_01_neighbors;
-static std::vector<std::set<int>> bins_10_neighbors;
-static std::vector<std::set<int>> bins_11_neighbors;
-
-
-std::vector<int> binNeighbors(int bin_index, double size) {
-    std::vector<int> neighbors;
-    neighbors.reserve(9);
-
-    int nbins = size/cutoff;
-    int row = bin_index / nbins;
-    int col = bin_index % nbins;
-
-    neighbors.push_back(bin_index);
-
-    bool leftedge = (col == 0);
-    bool rightedge = (col == nbins-1);
-    bool topedge = (row == nbins-1);
-    bool botedge = (row == 0);
-
-    if (botedge) {
-    neighbors.push_back(col+(row+1)*nbins); // top neighbor
-        if (leftedge) {
-            neighbors.push_back(col+1 + row*nbins); //right neighbor
-            neighbors.push_back(col+1 + (row+1)*nbins); //top right neighbor
-        }
-        else if (rightedge) {
-            neighbors.push_back(col-1 + row*nbins); //left neighbor
-            neighbors.push_back(col-1 + (row+1)*nbins); //top left neighbor
-        }
-        else {
-            neighbors.push_back(col+1 + row*nbins); //right neighbor
-            neighbors.push_back(col+1 + (row+1)*nbins); //top right neighbor
-            neighbors.push_back(col-1 + row*nbins); //left neighbor
-            neighbors.push_back(col-1 + (row+1)*nbins); //top left neighbor
+    // Precompute neighbors
+    for (int row = 0; row < nbins; ++row) {
+        for (int col = 0; col < nbins; ++col) {
+            unsigned int morton_idx = mortonEncode(row, col);
+            std::vector<unsigned int> neighbor_mortons;
+            neighbor_mortons.reserve(9); // Max 9 neighbors
+            for (int dr = -1; dr <= 1; ++dr) {
+                for (int dc = -1; dc <= 1; ++dc) {
+                    int nr = row + dr;
+                    int nc = col + dc;
+                    if (nr >= 0 && nr < nbins && nc >= 0 && nc < nbins) {
+                        neighbor_mortons.push_back(mortonEncode(nr, nc));
+                    }
+                }
+            }
+            neighbors_morton[morton_idx] = std::move(neighbor_mortons);
         }
     }
-    else if (topedge) {
-        neighbors.push_back(col+(row-1)*nbins); // bot neighbor
-        if (leftedge) {
-            neighbors.push_back(col+1 + row*nbins); //right neighbor
-            neighbors.push_back(col+1 + (row-1)*nbins); //bot right neighbor
-        }
-        else if (rightedge) {
-            neighbors.push_back(col-1 + row*nbins); //left neighbor
-            neighbors.push_back(col-1 + (row-1)*nbins); //bot left neighbor
-        }
-        else {
-            neighbors.push_back(col+1 + row*nbins); //right neighbor
-            neighbors.push_back(col+1 + (row-1)*nbins); //bot right neighbor
-            neighbors.push_back(col-1 + row*nbins); //left neighbor
-            neighbors.push_back(col-1 + (row-1)*nbins); //bot left neighbor
-        }
-    }
-    else {
-        neighbors.push_back(col+(row-1)*nbins); // bot neighbor
-        neighbors.push_back(col+(row+1)*nbins); // top neighbor
-        if (leftedge) {
-            neighbors.push_back(col+1 + row*nbins); //right neighbor
-            neighbors.push_back(col+1 + (row-1)*nbins); //bot right neighbor
-            neighbors.push_back(col+1 + (row+1)*nbins); //top right neighbor
-        }
-        else if (rightedge) {
-            neighbors.push_back(col-1 + row*nbins); //left neighbor
-            neighbors.push_back(col-1 + (row-1)*nbins); //bot left neighbor
-            neighbors.push_back(col-1 + (row+1)*nbins); //top left neighbor
-        }
-        else {
-            neighbors.push_back(col-1 + row*nbins); //left neighbor
-            neighbors.push_back(col-1 + (row-1)*nbins); //bot left neighbor
-            neighbors.push_back(col-1 + (row+1)*nbins); //top left neighbor
-            neighbors.push_back(col+1 + row*nbins); //right neighbor
-            neighbors.push_back(col+1 + (row-1)*nbins); //bot right neighbor
-            neighbors.push_back(col+1 + (row+1)*nbins); //top right neighbor
-        }
-    }
-    return neighbors;
-}
-// Initialize globals
-std::vector<std::pair<int,int>> movers;
-std::vector<std::vector<int>> neighbors;
-
-void init_simulation(particle_t* parts, int num_parts, double size) {
-	// You can use this space to initialize static, global data objects
-    // that you may need. This function will be called once before the
-    // algorithm begins. Do not do any particle simulation here
-    int nbins = size/cutoff;
-    double bin_size = size/nbins;
-
-    // Initialize bins
-    bins.resize(nbins*nbins);
 
     // Bin particles
     for (int i = 0; i < num_parts; ++i) {
-        int binrow = parts[i].y / bin_size;
-        int bincol = parts[i].x / bin_size;
-        bins[bincol + nbins*binrow].insert(i);
-    }
-    for (int i = 0; i < nbins*nbins; ++i) {
-        neighbors.push_back(binNeighbors(nbins*nbins-1-i,size));
+        int binrow = static_cast<int>(parts[i].y / bin_size);
+        int bincol = static_cast<int>(parts[i].x / bin_size);
+        unsigned int morton_idx = mortonEncode(binrow, bincol);
+        bins_morton[morton_idx].push_back(i);
+        particle_bins[i] = morton_idx;
     }
 }
 
+// Simulate One Step
+void simulate_one_step(particle_t* __restrict parts, int num_parts, double size, double bin_size, double block_size) {
+    int nbins = static_cast<int>(size / CUTOFF);
+    double bin_size = size / nbins;
 
-inline void simulate_one_step_shift_grid(particle_t* parts, const int& num_parts, const double& size, const int& h_shift, const int& v_shift) {
-    double bin_size = cutoff;
-    int nbins = size/bin_size;
+    int num_threads = omp_get_max_threads();
+    std::vector<std::vector<double>> ax_local(num_threads, std::vector<double>(num_parts, 0.0));
+    std::vector<std::vector<double>> ay_local(num_threads, std::vector<double>(num_parts, 0.0));
+    std::vector<std::vector<std::pair<int, unsigned int>>> movers_per_thread(num_threads);
 
-    // todo: index recalculated in every iteration
-    // todo: go through grid in blocks for better cache performance 
-    #pragma omp parallel for schedule(dynamic) collapse(2) 
-    for (size_t i = h_shift; i < nbins; i += 2) {
-        for (size_t j = v_shift; j < nbins; j += 2) {
-            size_t bin_index = i + j * nbins;
-            // For each particle in the bin
-            for (auto particle_idx : bins[bin_index]) {
+    #pragma omp parallel
+    {
+        int thread_id = omp_get_thread_num();
 
-                parts[particle_idx].ax = 0;
-                parts[particle_idx].ay = 0;
-
-                // Iterate over all neighboring bins
-                for (int h = -1; h <= 1; ++h) {
-                    for (int v = -1; v <= 1; ++v) {
-                        int n_i = i + h;
-                        int n_j = j + v;
-                        if (n_i < 0 || n_i >= nbins || n_j < 0 || n_j >= nbins)
-                            continue;
-                        int neighbor_bin = n_i + n_j * nbins;
-                        // For each particle in the neighbor bin
-                        for (auto neighbor_particle_idx : bins[neighbor_bin]) {
-                            apply_force(parts[particle_idx], parts[neighbor_particle_idx]);
+        #pragma omp for schedule(static)
+        for (unsigned int morton_idx = 0; morton_idx < nbins * nbins; ++morton_idx) {
+            for (int i : bins_morton[morton_idx]) {
+                const auto& neighbors = neighbors_morton[morton_idx];
+                size_t num_neighbors = neighbors.size();
+                for (size_t k = 0; k < num_neighbors; k += 2) {
+                    unsigned int neighbor1 = neighbors[k];
+                    const auto& bin1 = bins_morton[neighbor1];
+                    #pragma omp simd
+                    for (int j : bin1) {
+                        apply_force_local(&parts[i], &parts[j], ax_local[thread_id][i], ay_local[thread_id][i]);
+                    }
+                    if (k + 1 < num_neighbors) {
+                        unsigned int neighbor2 = neighbors[k + 1];
+                        const auto& bin2 = bins_morton[neighbor2];
+                        #pragma omp simd
+                        for (int j : bin2) {
+                            apply_force_local(&parts[i], &parts[j], ax_local[thread_id][i], ay_local[thread_id][i]);
                         }
                     }
                 }
             }
         }
-    }
 
-
-}
-
-
-
-void simulate_one_step(particle_t* parts, int num_parts, double size) {
-    int nbins = size/cutoff;
-    double bin_size = size/nbins;
-    //std::vector<int> neighbors(9);
-    // Compute forces
-    // For every bin
-    
-
-    /*
-    #pragma omp schedule(dynamic) for collapse(4)
-    for (int ii = 0; ii < nbins*nbins; ii++) {
-        // For each particle in bin
-        for (int i : bins[ii]) {
-            // Set particle acceleration to 0
-            parts[i].ax = parts[i].ay = 0;
-            double ax,ay;
-            // For each neighboring bin
-            for (int jj : neighbors[ii]) {
-                // For each particle in neighboring bin
-                for (int j : bins[jj]) {
-                    // Apply force on original particle
-                    apply_force(parts[i],parts[j]);
-                    // ax = get_ax(parts[i],parts[j]);
-                    // ay = get_ay(parts[i],parts[j]);
-                }
-            }
-            // #pragma omp single
-            // {
-            //     parts[i].ax = ax;
-            //     parts[i].ay = ay;
-            // }
-        }
-    }
-    */
-
-   #pragma omp single 
-   {
-        simulate_one_step_shift_grid(parts, num_parts, size, 0, 0);
-        simulate_one_step_shift_grid(parts, num_parts, size, 1, 0);
-        simulate_one_step_shift_grid(parts, num_parts, size, 0, 1);
-        simulate_one_step_shift_grid(parts, num_parts, size, 1, 1);
-   }
-    
-    // Move Particles
-    #pragma omp schedule(static) for collapse(2) shared (movers)
-    for (int ii = 0; ii < nbins*nbins; ii++) {
-        for (const int& i : bins[ii]) {
-            int binrow_ini = parts[i].y / bin_size;
-            int bincol_ini = parts[i].x / bin_size;
-            #pragma omp critical
-            {
-                move(parts[i], size);
-            }
-            int binrow_fin = parts[i].y / bin_size;
-            int bincol_fin = parts[i].x / bin_size;
-            #pragma omp critical 
-            {
-                if (binrow_ini != binrow_fin || bincol_ini != bincol_fin) {
-                    std::pair<int,int> temp(i,bincol_ini + binrow_ini*nbins);
-                    movers.push_back(temp);
-                }
+        #pragma omp for schedule(static)
+        for (int i = 0; i < num_parts; ++i) {
+            unsigned int morton_idx_ini = particle_bins[i];
+            move(&parts[i], size);
+            int binrow_fin = static_cast<int>(parts[i].y / bin_size);
+            int bincol_fin = static_cast<int>(parts[i].x / bin_size);
+            unsigned int morton_idx_fin = mortonEncode(binrow_fin, bincol_fin);
+            if (morton_idx_ini != morton_idx_fin) {
+                movers_per_thread[thread_id].push_back({i, morton_idx_ini});
             }
         }
     }
+
+    // Combine accelerations
+    #pragma omp parallel for schedule(static)
+    for (int i = 0; i < num_parts; ++i) {
+        double ax_sum = 0.0, ay_sum = 0.0;
+        for (int t = 0; t < num_threads; ++t) {
+            ax_sum += ax_local[t][i];
+            ay_sum += ay_local[t][i];
+        }
+        parts[i].ax = ax_sum;
+        parts[i].ay = ay_sum;
+    }
+
     // Update bins
-    #pragma omp single
-    {
-        for (std::pair<int,int> i : movers) {
-            bins[i.second].erase(i.first);
-            int binrow = parts[i.first].y / bin_size;
-            int bincol = parts[i.first].x / bin_size;
-            bins[bincol + nbins*binrow].insert(i.first);
+    for (const auto& thread_movers : movers_per_thread) {
+        for (const auto& mover : thread_movers) {
+            int i = mover.first;
+            unsigned int morton_idx_ini = mover.second;
+            remove_from_bin(bins_morton[morton_idx_ini], i);
+            int binrow_fin = static_cast<int>(parts[i].y / bin_size);
+            int bincol_fin = static_cast<int>(parts[i].x / bin_size);
+            unsigned int morton_idx_fin = mortonEncode(binrow_fin, bincol_fin);
+            bins_morton[morton_idx_fin].push_back(i);
+            particle_bins[i] = morton_idx_fin;
         }
     }
-
-    movers.clear();
 }
