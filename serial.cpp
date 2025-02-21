@@ -65,10 +65,13 @@ std::vector<int> binNeighbors(int bin_index, int nbins) {
     return neighbors;
 }
 
-// Inline Calculate Blocked Index
+// Inline Calculate Blocked Index with Clamping
 inline int calc_blocked_index(double x, double y, int nbins, int nblocks, int bins_per_block) {
     int bin_col = static_cast<int>(x / BIN_SIZE);
     int bin_row = static_cast<int>(y / BIN_SIZE);
+    // Clamp to valid range
+    bin_col = std::max(0, std::min(nbins - 1, bin_col));
+    bin_row = std::max(0, std::min(nbins - 1, bin_row));
     return bin_row * nbins + bin_col;
 }
 
@@ -101,7 +104,7 @@ void simulate_one_step(particle_t* __restrict parts, int num_parts, double size)
                 for (int j = 0; j < BLOCK_SIZE; ++j) {
                     int bin_row = block_row * BLOCK_SIZE + i;
                     int bin_col = block_col * BLOCK_SIZE + j;
-                    if (bin_row >= nbins || bin_col >= nbins) continue; // Handle non-divisible nbins
+                    if (bin_row >= nbins || bin_col >= nbins) continue;
                     int bin_index = bin_row * nbins + bin_col;
                     for (int particle_index : bins[bin_index]) {
                         parts[particle_index].ax = 0.0;
