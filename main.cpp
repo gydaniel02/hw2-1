@@ -125,7 +125,6 @@ int main(int argc, char** argv) {
 #pragma omp parallel default(shared)
 #endif
     {
-        #pragma omp single
         for (int step = 0; step < nsteps; ++step) {
             simulate_one_step(parts, num_parts, size);
 
