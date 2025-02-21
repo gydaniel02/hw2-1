@@ -86,7 +86,7 @@ static std::vector<std::set<int>> bins;
 
 
 std::vector<int> binNeighbors(int bin_index, double size) {
-    std::vector<int> neighbors(9);
+    std::vector<int> neighbors;
     int nbins = size/(sizemult*cutoff);
     int row = bin_index / nbins;
     int col = bin_index % nbins;
@@ -176,7 +176,7 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
         bins[bincol + nbins*binrow].insert(i);
     }
     for (int i = 0; i < nbins*nbins; ++i) {
-        neighbors.push_back(binNeighbors(nbins*nbins-1-i,size));
+        neighbors.push_back(binNeighbors(i,size));
     }
 }
 
