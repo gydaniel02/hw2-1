@@ -21,14 +21,11 @@ inline uint32_t interleave_bits(int x, int y) {
 }
 
 inline void decode_morton(int morton, int& row, int& col) {
-    row = col = 0;
-    int bit_position = 0;
-    while (morton > 0) {
-        row |= (morton & 1) << bit_position;
-        morton >>= 1;
-        col |= (morton & 1) << bit_position;
-        morton >>= 1;
-        bit_position++;
+    row = 0;
+    col = 0;
+    for (int i = 0; i < 16; ++i) {  // Assuming nbins < 2^16
+        row |= ((morton >> (2 * i)) & 1) << i;      // Extract even-position bits for row
+        col |= ((morton >> (2 * i + 1)) & 1) << i;  // Extract odd-position bits for col
     }
 }
 
