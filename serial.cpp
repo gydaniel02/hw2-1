@@ -20,6 +20,18 @@ inline uint32_t interleave_bits(int x, int y) {
     return z;
 }
 
+inline void decode_morton(int morton, int& row, int& col) {
+    row = col = 0;
+    int bit_position = 0;
+    while (morton > 0) {
+        row |= (morton & 1) << bit_position;
+        morton >>= 1;
+        col |= (morton & 1) << bit_position;
+        morton >>= 1;
+        bit_position++;
+    }
+}
+
 inline int morton_index(int row, int col) {
     if (row < 0 || row >= nbins || col < 0 || col >= nbins) {
         std::cerr << "Morton index out of bounds: row=" << row << ", col=" << col << std::endl;
@@ -67,7 +79,7 @@ inline int calc_blocked_index(double x, double y, int nbins) {
 }
 
 // **Initialize Simulation**
-void init_simulation(particle_t* __restrict parts, int num_parts, double size, double bin_size_param, int block_size) {
+void init_simulation(particle_t* __restrict parts, int num_parts, double size, double bin_size_param) {
     if (size <= 0 || bin_size_param <= 0 || num_parts <= 0 || !parts) {
         std::cerr << "Invalid parameters: size=" << size
                   << ", bin_size=" << bin_size_param
@@ -77,8 +89,8 @@ void init_simulation(particle_t* __restrict parts, int num_parts, double size, d
 
     bin_size = bin_size_param;
     nbins = std::max(1, static_cast<int>(std::ceil(size / bin_size)));
-
     int total_bins = nbins * nbins;
+
     bins.resize(num_parts + total_bins);     // Initial size with padding
     bin_starts.resize(total_bins + 1, 0);    // +1 for end marker
 
@@ -104,7 +116,7 @@ void init_simulation(particle_t* __restrict parts, int num_parts, double size, d
 }
 
 // **Simulate One Step**
-void simulate_one_step(particle_t* __restrict parts, int num_parts, double size) {
+void simulate_one_step(particle_t* __restrict parts, int num_parts, double size, int block_size) {
     int total_bins = nbins * nbins;
 
     // Reset accelerations and compute forces
@@ -116,6 +128,9 @@ void simulate_one_step(particle_t* __restrict parts, int num_parts, double size)
             exit(1);
         }
 
+        int bin_row, bin_col;
+        decode_morton(bin_index, bin_row, bin_col);
+
         for (int p_idx = start; p_idx < end; ++p_idx) {
             int particle_index = bins[p_idx];
             if (particle_index < 0 || particle_index >= num_parts) {
@@ -126,8 +141,6 @@ void simulate_one_step(particle_t* __restrict parts, int num_parts, double size)
             parts[particle_index].ay = 0.0;
 
             // Calculate neighbors dynamically
-            int bin_row = bin_index / nbins;  // Simplified; adjust based on Morton mapping
-            int bin_col = bin_index % nbins;
             for (int dr = -1; dr <= 1; ++dr) {
                 for (int dc = -1; dc <= 1; ++dc) {
                     int nr = bin_row + dr;
@@ -169,6 +182,10 @@ void simulate_one_step(particle_t* __restrict parts, int num_parts, double size)
             }
             move(&parts[particle_index], size);
             int bin_index_fin = calc_blocked_index(parts[particle_index].x, parts[particle_index].y, nbins);
+            if (bin_index_fin < 0 || bin_index_fin >= total_bins) {
+                std::cerr << "Invalid bin_index_fin: " << bin_index_fin << std::endl;
+                exit(1);
+            }
             if (bin_index != bin_index_fin) {
                 movers.push_back({particle_index, bin_index_fin});
             } else {
@@ -188,8 +205,7 @@ void simulate_one_step(particle_t* __restrict parts, int num_parts, double size)
         }
         int end = bin_starts[bin_index_fin + 1];
         if (end >= bins.size()) {
-            // Resize bins if necessary
-            bins.resize(bins.size() + num_parts);  // Add padding for safety
+            bins.resize(bins.size() + num_parts);  // Resize with padding
         }
         bins[end] = particle_index;
         bin_starts[bin_index_fin + 1]++;
