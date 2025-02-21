@@ -69,11 +69,7 @@ std::vector<int> binNeighbors(int bin_index, int nbins) {
 inline int calc_blocked_index(double x, double y, int nbins, int nblocks, int bins_per_block) {
     int bin_col = static_cast<int>(x / BIN_SIZE);
     int bin_row = static_cast<int>(y / BIN_SIZE);
-    int bin_index = bin_row * nbins + bin_col;
-    int block_col = bin_col / (nbins / nblocks);
-    int block_row = bin_row / (nbins / nblocks);
-    int block_index = block_row * nblocks + block_col;
-    return bin_index + block_index * bins_per_block;
+    return bin_row * nbins + bin_col;
 }
 
 // Initialize Simulation
@@ -91,27 +87,32 @@ void init_simulation(particle_t* __restrict parts, int num_parts, double size) {
 
     // Bin particles
     for (int i = 0; i < num_parts; ++i) {
-        int blocked_index = calc_blocked_index(parts[i].x, parts[i].y, nbins, nblocks, bins_per_block);
-        bins[blocked_index].push_back(i);
+        int bin_index = calc_blocked_index(parts[i].x, parts[i].y, nbins, nblocks, bins_per_block);
+        bins[bin_index].push_back(i);
     }
 }
 
 // Simulate One Step
 void simulate_one_step(particle_t* __restrict parts, int num_parts, double size) {
-    int nblockssqrd = nblocks * nblocks;
-
     // Reset accelerations and compute forces
-    for (int block = 0; block < nblockssqrd; ++block) {
-        for (int j = 0; j < bins_per_block; ++j) {
-            int bin_index = block * bins_per_block + j;
-            for (int particle_index : bins[bin_index]) {
-                parts[particle_index].ax = 0.0;
-                parts[particle_index].ay = 0.0;
-                const auto& neighbor_bins = neighbors[bin_index];
-                for (int neighbor_bin_index : neighbor_bins) {
-                    const auto& neighbor_particles = bins[neighbor_bin_index];
-                    for (int neighbor_index : neighbor_particles) {
-                        apply_force(&parts[particle_index], &parts[neighbor_index]);
+    for (int block_row = 0; block_row < nblocks; ++block_row) {
+        for (int block_col = 0; block_col < nblocks; ++block_col) {
+            for (int i = 0; i < BLOCK_SIZE; ++i) {
+                for (int j = 0; j < BLOCK_SIZE; ++j) {
+                    int bin_row = block_row * BLOCK_SIZE + i;
+                    int bin_col = block_col * BLOCK_SIZE + j;
+                    if (bin_row >= nbins || bin_col >= nbins) continue; // Handle non-divisible nbins
+                    int bin_index = bin_row * nbins + bin_col;
+                    for (int particle_index : bins[bin_index]) {
+                        parts[particle_index].ax = 0.0;
+                        parts[particle_index].ay = 0.0;
+                        const auto& neighbor_bins = neighbors[bin_index];
+                        for (int neighbor_bin_index : neighbor_bins) {
+                            const auto& neighbor_particles = bins[neighbor_bin_index];
+                            for (int neighbor_index : neighbor_particles) {
+                                apply_force(&parts[particle_index], &parts[neighbor_index]);
+                            }
+                        }
                     }
                 }
             }
