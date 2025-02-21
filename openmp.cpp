@@ -5,6 +5,7 @@
 #include <vector>
 #include <set>
 #include <iostream>
+#define sizemult 1.2
 
 // Put any static global variables here that you will use throughout the simulation.
 void apply_force(particle_t& particle, particle_t& neighbor) {
@@ -86,7 +87,7 @@ static std::vector<std::set<int>> bins;
 
 std::vector<int> binNeighbors(int bin_index, double size) {
     std::vector<int> neighbors(9);
-    int nbins = size/cutoff;
+    int nbins = size/(sizemult*cutoff);
     int row = bin_index / nbins;
     int col = bin_index % nbins;
 
@@ -162,7 +163,7 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
 	// You can use this space to initialize static, global data objects
     // that you may need. This function will be called once before the
     // algorithm begins. Do not do any particle simulation here
-    int nbins = size/cutoff;
+    int nbins = size/(sizemult*cutoff);
     double bin_size = size/nbins;
 
     // Initialize bins
@@ -182,7 +183,7 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
 
 
 void simulate_one_step(particle_t* parts, int num_parts, double size) {
-    int nbins = size/cutoff;
+    int nbins = size/(sizemult*cutoff);
     double bin_size = size/nbins;
     int id = omp_get_thread_num();
     int numthreads = omp_get_num_threads();
