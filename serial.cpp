@@ -3,10 +3,6 @@
 #include <vector>
 #include <iostream>
 
-// Global constants
-#define BIN_SIZE 0.5
-#define BLOCK_SIZE 4
-
 // Global variables
 std::vector<std::vector<int>> bins;
 std::vector<std::vector<int>> neighbors;
@@ -62,9 +58,9 @@ std::vector<int> binNeighbors(int bin_index, int nbins) {
 }
 
 // Inline Calculate Blocked Index with Clamping
-inline int calc_blocked_index(double x, double y, int nbins, int nblocks, int bins_per_block) {
-    int bin_col = static_cast<int>(x / BIN_SIZE);
-    int bin_row = static_cast<int>(y / BIN_SIZE);
+inline int calc_blocked_index(double x, double y, int nbins, int nblocks, int bins_per_block, double bin_size) {
+    int bin_col = static_cast<int>(x / bin_size);
+    int bin_row = static_cast<int>(y / bin_size);
     // Clamp to valid range
     bin_col = std::max(0, std::min(nbins - 1, bin_col));
     bin_row = std::max(0, std::min(nbins - 1, bin_row));
@@ -72,9 +68,9 @@ inline int calc_blocked_index(double x, double y, int nbins, int nblocks, int bi
 }
 
 // Initialize Simulation
-void init_simulation(particle_t* __restrict parts, int num_parts, double size) {
-    nbins = static_cast<int>(size / BIN_SIZE);
-    nblocks = nbins / BLOCK_SIZE;
+void init_simulation(particle_t* __restrict parts, int num_parts, double size, double bin_size, double block_size) {
+    nbins = static_cast<int>(size / bin_size);
+    nblocks = nbins / block_size;
     bins_per_block = (nbins / nblocks) * (nbins / nblocks);
     bins.resize(nbins * nbins);
     neighbors.resize(nbins * nbins);
@@ -86,20 +82,20 @@ void init_simulation(particle_t* __restrict parts, int num_parts, double size) {
 
     // Bin particles
     for (int i = 0; i < num_parts; ++i) {
-        int bin_index = calc_blocked_index(parts[i].x, parts[i].y, nbins, nblocks, bins_per_block);
+        int bin_index = calc_blocked_index(parts[i].x, parts[i].y, nbins, nblocks, bins_per_block, bin_size);
         bins[bin_index].push_back(i);
     }
 }
 
 // Simulate One Step
-void simulate_one_step(particle_t* __restrict parts, int num_parts, double size) {
+void simulate_one_step(particle_t* __restrict parts, int num_parts, double size, double bin_size, double block_size) {
     // Reset accelerations and compute forces
     for (int block_row = 0; block_row < nblocks; ++block_row) {
         for (int block_col = 0; block_col < nblocks; ++block_col) {
-            for (int i = 0; i < BLOCK_SIZE; ++i) {
-                for (int j = 0; j < BLOCK_SIZE; ++j) {
-                    int bin_row = block_row * BLOCK_SIZE + i;
-                    int bin_col = block_col * BLOCK_SIZE + j;
+            for (int i = 0; i < block_size; ++i) {
+                for (int j = 0; j < block_size; ++j) {
+                    int bin_row = block_row * block_size + i;
+                    int bin_col = block_col * block_size + j;
                     if (bin_row >= nbins || bin_col >= nbins) continue;
                     int bin_index = bin_row * nbins + bin_col;
                     for (int particle_index : bins[bin_index]) {
@@ -123,7 +119,7 @@ void simulate_one_step(particle_t* __restrict parts, int num_parts, double size)
     for (int bin_index = 0; bin_index < nbins * nbins; ++bin_index) {
         for (int particle_index : bins[bin_index]) {
             move(&parts[particle_index], size);
-            int bin_index_fin = calc_blocked_index(parts[particle_index].x, parts[particle_index].y, nbins, nblocks, bins_per_block);
+            int bin_index_fin = calc_blocked_index(parts[particle_index].x, parts[particle_index].y, nbins, nblocks, bins_per_block, bin_size);
             if (bin_index != bin_index_fin) {
                 movers.push_back({particle_index, bin_index_fin});
             }
