@@ -4,12 +4,8 @@
 #include <iostream>
 
 // Global constants
-#define CUTOFF 0.01
-#define MIN_R 0.0001
-#define MASS 1.0
-#define DT 0.0005
-#define BIN_SIZE 0.1
-#define BLOCK_SIZE 8
+#define BIN_SIZE 0.5
+#define BLOCK_SIZE 4
 
 // Global variables
 std::vector<std::vector<int>> bins;
@@ -23,20 +19,20 @@ inline void apply_force(particle_t* __restrict particle, const particle_t* __res
     double dx = neighbor->x - particle->x;
     double dy = neighbor->y - particle->y;
     double r2 = dx * dx + dy * dy;
-    if (r2 > CUTOFF * CUTOFF) return;
-    r2 = std::fmax(r2, MIN_R * MIN_R);
+    if (r2 > cutoff * cutoff) return;
+    r2 = std::fmax(r2, min_r * min_r);
     double r = std::sqrt(r2);
-    double coef = (1 - CUTOFF / r) / r2 / MASS;
+    double coef = (1 - cutoff / r) / r2 / mass;
     particle->ax += coef * dx;
     particle->ay += coef * dy;
 }
 
 // Inline Move Particle
 inline void move(particle_t* __restrict p, double size) {
-    p->vx += p->ax * DT;
-    p->vy += p->ay * DT;
-    p->x += p->vx * DT;
-    p->y += p->vy * DT;
+    p->vx += p->ax * dt;
+    p->vy += p->ay * dt;
+    p->x += p->vx * dt;
+    p->y += p->vy * dt;
     while (p->x < 0 || p->x > size) {
         p->x = p->x < 0 ? -p->x : 2 * size - p->x;
         p->vx = -p->vx;
