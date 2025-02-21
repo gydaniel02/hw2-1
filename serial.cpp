@@ -23,9 +23,9 @@ inline uint32_t interleave_bits(int x, int y) {
 inline void decode_morton(int morton, int& row, int& col) {
     row = 0;
     col = 0;
-    for (int i = 0; i < 16; ++i) {  // Assuming nbins < 2^16
-        row |= ((morton >> (2 * i)) & 1) << i;      // Extract even-position bits for row
-        col |= ((morton >> (2 * i + 1)) & 1) << i;  // Extract odd-position bits for col
+    for (int i = 0; i < 16; ++i) {
+        row |= ((morton >> (2 * i)) & 1) << i;
+        col |= ((morton >> (2 * i + 1)) & 1) << i;
     }
 }
 
@@ -72,7 +72,7 @@ inline int calc_blocked_index(double x, double y, int nbins) {
 }
 
 // **Initialize Simulation**
-void init_simulation(particle_t* __restrict parts, int num_parts, double size, double bin_size_param, int block_size) {
+void init_simulation(particle_t* __restrict parts, int num_parts, double size, double bin_size_param) {
     if (size <= 0 || bin_size_param <= 0 || num_parts <= 0 || !parts) {
         std::cerr << "Invalid parameters: size=" << size
                   << ", bin_size=" << bin_size_param
@@ -84,8 +84,8 @@ void init_simulation(particle_t* __restrict parts, int num_parts, double size, d
     nbins = std::max(1, static_cast<int>(std::ceil(size / bin_size)));
     int total_bins = nbins * nbins;
 
-    bins.resize(num_parts + total_bins);     // Initial size with padding
-    bin_starts.resize(total_bins + 1, 0);    // +1 for end marker
+    bins.resize(num_parts + total_bins);
+    bin_starts.resize(total_bins + 1, 0);
 
     std::vector<std::vector<int>> temp_bins(total_bins);
     for (int i = 0; i < num_parts; ++i) {
@@ -135,12 +135,8 @@ void simulate_one_step(particle_t* __restrict parts, int num_parts, double size)
                 for (int dc = -1; dc <= 1; ++dc) {
                     int nr = bin_row + dr;
                     int nc = bin_col + dc;
-                    if (nr < 0 || nr >= nbins || nc < 0 || nc >= nbins) continue;  // Skip out-of-bounds
+                    if (nr < 0 || nr >= nbins || nc < 0 || nc >= nbins) continue;
                     int neighbor_bin = morton_index(nr, nc);
-                    if (neighbor_bin < 0 || neighbor_bin >= total_bins) {
-                        std::cerr << "Invalid neighbor bin index: " << neighbor_bin << std::endl;
-                        exit(1);
-                    }
                     int n_start = bin_starts[neighbor_bin];
                     int n_end = bin_starts[neighbor_bin + 1];
                     if (n_start < 0 || n_end > bins.size() || n_start > n_end) {
@@ -160,43 +156,29 @@ void simulate_one_step(particle_t* __restrict parts, int num_parts, double size)
         }
     }
 
-    // Move particles and track movers
-    std::vector<std::pair<int, int>> movers;
-    movers.reserve(num_parts / 10);
-    for (int bin_index = 0; bin_index < total_bins; ++bin_index) {
-        int start = bin_starts[bin_index];
-        int end = bin_starts[bin_index + 1];
-        int new_end = start;
-        for (int p_idx = start; p_idx < end; ++p_idx) {
-            int particle_index = bins[p_idx];
-            if (particle_index < 0 || particle_index >= num_parts) {
-                std::cerr << "Invalid particle index during move: " << particle_index << std::endl;
-                exit(1);
-            }
-            move(&parts[particle_index], size);
-            int bin_index_fin = calc_blocked_index(parts[particle_index].x, parts[particle_index].y, nbins);
-            if (bin_index_fin < 0 || bin_index_fin >= total_bins) {
-                std::cerr << "Invalid bin_index_fin: " << bin_index_fin << std::endl;
-                exit(1);
-            }
-            if (bin_index != bin_index_fin) {
-                movers.push_back({particle_index, bin_index_fin});
-            } else {
-                bins[new_end++] = particle_index;
-            }
-        }
-        bin_starts[bin_index + 1] = new_end;
+    // Move all particles
+    for (int i = 0; i < num_parts; ++i) {
+        move(&parts[i], size);
     }
 
-    // Update bins with movers
-    for (const auto& mover : movers) {
-        int particle_index = mover.first;
-        int bin_index_fin = mover.second;
-        int end = bin_starts[bin_index_fin + 1];
-        if (end >= bins.size()) {
-            bins.resize(bins.size() + num_parts);
-        }
-        bins[end] = particle_index;
-        bin_starts[bin_index_fin + 1]++;
+    // Rebuild bins
+    bins.clear();
+    bin_starts.resize(total_bins + 1, 0);
+    std::vector<std::vector<int>> temp_bins(total_bins);
+    for (int i = 0; i < num_parts; ++i) {
+        int bin_index = calc_blocked_index(parts[i].x, parts[i].y, nbins);
+        temp_bins[bin_index].push_back(i);
     }
+
+    int offset = 0;
+    for (int i = 0; i < total_bins; ++i) {
+        bin_starts[i] = offset;
+        for (int idx : temp_bins[i]) {
+            if (offset >= bins.size()) {
+                bins.resize(offset + num_parts);
+            }
+            bins[offset++] = idx;
+        }
+    }
+    bin_starts[total_bins] = offset;
 }
