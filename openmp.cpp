@@ -205,7 +205,7 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
             }
         }
     }
-    std::vector<std::pair<int,int>> movers;
+    std::set<std::pair<int,int>> movers[numthreads];
     // Move Particles
     #pragma omp for schedule(static)
     for (int i = 0; i < num_parts; ++i) {
@@ -216,12 +216,12 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
         int bincol_fin = parts[i].x / bin_size;
         if (binrow_ini != binrow_fin || bincol_ini != bincol_fin) {
             std::pair<int,int> temp(i,bincol_ini + binrow_ini*nbins);
-            movers.push_back(temp);
+            movers[id].insert(temp);
         }
     }
     
     //Update bins
-    for (std::pair<int,int> i : movers) {
+    for (std::pair<int,int> i : movers[id]) {
         #pragma omp critical
         {
         bins[i.second].erase(i.first);
