@@ -84,7 +84,7 @@ void init_simulation(particle_t* __restrict parts, int num_parts, double size, d
     nbins = std::max(1, static_cast<int>(std::ceil(size / bin_size)));
     int total_bins = nbins * nbins;
 
-    bins.resize(num_parts + total_bins);
+    bins.resize(num_parts);  // Exact size for initial particles
     bin_starts.resize(total_bins + 1, 0);
 
     std::vector<std::vector<int>> temp_bins(total_bins);
@@ -97,9 +97,6 @@ void init_simulation(particle_t* __restrict parts, int num_parts, double size, d
     for (int i = 0; i < total_bins; ++i) {
         bin_starts[i] = offset;
         for (int idx : temp_bins[i]) {
-            if (offset >= bins.size()) {
-                bins.resize(bins.size() * 2);
-            }
             bins[offset++] = idx;
         }
     }
@@ -110,7 +107,30 @@ void init_simulation(particle_t* __restrict parts, int num_parts, double size, d
 void simulate_one_step(particle_t* __restrict parts, int num_parts, double size) {
     int total_bins = nbins * nbins;
 
-    // Reset accelerations and compute forces
+    // Move particles and rebuild bins first
+    for (int i = 0; i < num_parts; ++i) {
+        move(&parts[i], size);
+    }
+
+    bins.clear();
+    bins.resize(num_parts);  // Reset to exact size
+    bin_starts.resize(total_bins + 1, 0);
+    std::vector<std::vector<int>> temp_bins(total_bins);
+    for (int i = 0; i < num_parts; ++i) {
+        int bin_index = calc_blocked_index(parts[i].x, parts[i].y, nbins);
+        temp_bins[bin_index].push_back(i);
+    }
+
+    int offset = 0;
+    for (int i = 0; i < total_bins; ++i) {
+        bin_starts[i] = offset;
+        for (int idx : temp_bins[i]) {
+            bins[offset++] = idx;
+        }
+    }
+    bin_starts[total_bins] = offset;
+
+    // Compute forces after rebuilding bins
     for (int bin_index = 0; bin_index < total_bins; ++bin_index) {
         int start = bin_starts[bin_index];
         int end = bin_starts[bin_index + 1];
@@ -155,30 +175,4 @@ void simulate_one_step(particle_t* __restrict parts, int num_parts, double size)
             }
         }
     }
-
-    // Move all particles
-    for (int i = 0; i < num_parts; ++i) {
-        move(&parts[i], size);
-    }
-
-    // Rebuild bins
-    bins.clear();
-    bin_starts.resize(total_bins + 1, 0);
-    std::vector<std::vector<int>> temp_bins(total_bins);
-    for (int i = 0; i < num_parts; ++i) {
-        int bin_index = calc_blocked_index(parts[i].x, parts[i].y, nbins);
-        temp_bins[bin_index].push_back(i);
-    }
-
-    int offset = 0;
-    for (int i = 0; i < total_bins; ++i) {
-        bin_starts[i] = offset;
-        for (int idx : temp_bins[i]) {
-            if (offset >= bins.size()) {
-                bins.resize(offset + num_parts);
-            }
-            bins[offset++] = idx;
-        }
-    }
-    bin_starts[total_bins] = offset;
 }
