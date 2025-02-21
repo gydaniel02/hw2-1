@@ -2,6 +2,7 @@
 #include <cmath>
 #include <vector>
 #include <iostream>
+#include <cstdint>  // Added to define uint32_t
 
 // **Global Variables**
 std::vector<int> bins;           // Flat 1D vector for all particle indices
@@ -24,7 +25,7 @@ inline uint32_t interleave_bits(int x, int y) {
 }
 
 inline int morton_index(int row, int col) {
-    return interleave_bits(row, col);
+    return static_cast<int>(interleave_bits(row, col));
 }
 
 // **Inline Apply Force**
