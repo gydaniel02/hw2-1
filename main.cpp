@@ -99,6 +99,8 @@ int main(int argc, char** argv) {
         std::cout << "-h: see this help" << std::endl;
         std::cout << "-n <int>: set number of particles" << std::endl;
         std::cout << "-o <filename>: set the output file name" << std::endl;
+        std::cout << "-bs: set binsize" << std::endl;
+        std::cout << "-bls: set blocksize" << std::endl;
         std::cout << "-s <int>: set particle initialization seed" << std::endl;
         return 0;
     }
@@ -110,6 +112,8 @@ int main(int argc, char** argv) {
     // Initialize Particles
     int num_parts = find_int_arg(argc, argv, "-n", 1000);
     int part_seed = find_int_arg(argc, argv, "-s", 0);
+    double bin_size = find_int_arg(argc, argv, "-bs", 0.1);
+    double block_size = find_int_arg(argc, argv, "-bls", 8);
     double size = sqrt(density * num_parts);
 
     particle_t* parts = new particle_t[num_parts];
@@ -119,7 +123,7 @@ int main(int argc, char** argv) {
     // Algorithm
     auto start_time = std::chrono::steady_clock::now();
 
-    init_simulation(parts, num_parts, size);
+    init_simulation(parts, num_parts, size, bin_size, block_size);
 
 #ifdef _OPENMP
 #pragma omp parallel default(shared)
