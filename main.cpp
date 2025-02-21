@@ -113,7 +113,7 @@ int main(int argc, char** argv) {
     int num_parts = find_int_arg(argc, argv, "-n", 1000);
     int part_seed = find_int_arg(argc, argv, "-s", 0);
     double bin_size = find_int_arg(argc, argv, "-bs", 0.1);
-    double block_size = find_int_arg(argc, argv, "-bls", 8);
+    int block_size = find_int_arg(argc, argv, "-bls", 8);
     double size = sqrt(density * num_parts);
 
     particle_t* parts = new particle_t[num_parts];

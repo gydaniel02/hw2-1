@@ -9,8 +9,8 @@ std::vector<std::vector<int>> neighbors;
 int nbins;
 int nblocks;
 int bins_per_block;
-double block_size;  // Global variable for block size
-double bin_size;    // Global variable for bin size
+int block_size;    // Changed to int for simplicity and correctness
+double bin_size;   // Global variable for bin size
 
 // Inline Apply Force
 inline void apply_force(particle_t* __restrict particle, const particle_t* __restrict neighbor) {
@@ -71,14 +71,38 @@ inline int calc_blocked_index(double x, double y, int nbins, int nblocks, int bi
 
 // Initialize Simulation
 void init_simulation(particle_t* __restrict parts, int num_parts, double size, double bin_size_param, double block_size_param) {
-    bin_size = bin_size_param;    // Set global bin_size
-    block_size = block_size_param; // Set global block_size
+    // Input validation
+    if (size <= 0 || bin_size_param <= 0 || block_size_param <= 0 || num_parts <= 0 || !parts) {
+        std::cerr << "Invalid parameters: size=" << size
+                  << ", bin_size=" << bin_size_param
+                  << ", block_size=" << block_size_param
+                  << ", num_parts=" << num_parts
+                  << ", parts=" << (parts ? "non-null" : "null") << std::endl;
+        exit(1);
+    }
+
+    bin_size = bin_size_param;
+    block_size = static_cast<int>(block_size_param); // Convert to int
+    if (block_size <= 0) {
+        std::cerr << "Invalid block_size after conversion: " << block_size << std::endl;
+        exit(1);
+    }
+
+    // Ensure nbins >= 1
+    nbins = std::max(1, static_cast<int>(std::ceil(size / bin_size)));
     
-    nbins = static_cast<int>(size / bin_size);
-    nblocks = nbins / block_size;
+    // Calculate nblocks to cover all bins
+    nblocks = (nbins + block_size - 1) / block_size;
+    
+    // bins_per_block is not used in calc_blocked_index, but kept for compatibility
     bins_per_block = (nbins / nblocks) * (nbins / nblocks);
+    
     bins.resize(nbins * nbins);
     neighbors.resize(nbins * nbins);
+
+    // Debug output (optional, can be removed in production)
+    std::cout << "nbins: " << nbins << ", nblocks: " << nblocks
+              << ", block_size: " << block_size << std::endl;
 
     // Precompute neighbors
     for (int i = 0; i < nbins * nbins; ++i) {
@@ -103,13 +127,31 @@ void simulate_one_step(particle_t* __restrict parts, int num_parts, double size)
                     int bin_col = block_col * block_size + j;
                     if (bin_row >= nbins || bin_col >= nbins) continue;
                     int bin_index = bin_row * nbins + bin_col;
+
+                    // Debug check (optional)
+                    if (bin_index < 0 || bin_index >= nbins * nbins) {
+                        std::cerr << "Invalid bin_index: " << bin_index << std::endl;
+                        continue;
+                    }
+
                     for (int particle_index : bins[bin_index]) {
+                        // Debug check (optional)
+                        if (particle_index < 0 || particle_index >= num_parts) {
+                            std::cerr << "Invalid particle_index: " << particle_index << std::endl;
+                            continue;
+                        }
+
                         parts[particle_index].ax = 0.0;
                         parts[particle_index].ay = 0.0;
                         const auto& neighbor_bins = neighbors[bin_index];
                         for (int neighbor_bin_index : neighbor_bins) {
                             const auto& neighbor_particles = bins[neighbor_bin_index];
                             for (int neighbor_index : neighbor_particles) {
+                                // Debug check (optional)
+                                if (neighbor_index < 0 || neighbor_index >= num_parts) {
+                                    std::cerr << "Invalid neighbor_index: " << neighbor_index << std::endl;
+                                    continue;
+                                }
                                 apply_force(&parts[particle_index], &parts[neighbor_index]);
                             }
                         }
@@ -135,6 +177,13 @@ void simulate_one_step(particle_t* __restrict parts, int num_parts, double size)
     for (const auto& mover : movers) {
         int particle_index = mover.first;
         int bin_index_fin = mover.second;
+
+        // Debug check (optional)
+        if (bin_index_fin < 0 || bin_index_fin >= nbins * nbins) {
+            std::cerr << "Invalid bin_index_fin: " << bin_index_fin << std::endl;
+            continue;
+        }
+
         for (int bin_index = 0; bin_index < nbins * nbins; ++bin_index) {
             auto& bin = bins[bin_index];
             for (auto it = bin.begin(); it != bin.end(); ) {

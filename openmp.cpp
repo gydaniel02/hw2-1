@@ -108,7 +108,7 @@ void init_simulation(particle_t* __restrict parts, int num_parts, double size) {
 }
 
 // Simulate One Step
-void simulate_one_step(particle_t* __restrict parts, int num_parts, double size, double bin_size, double block_size) {
+void simulate_one_step(particle_t* __restrict parts, int num_parts, double size, double bin_size, int block_size) {
     int nbins = static_cast<int>(size / CUTOFF);
     double bin_size = size / nbins;
 
