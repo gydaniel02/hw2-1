@@ -3,7 +3,7 @@
 #include <math.h>
 #include <vector>
 #include <set>
-
+#include <iostream>
 
 // Apply the force from neighbor to particle
 void apply_force(particle_t& particle, particle_t& neighbor) {
@@ -48,7 +48,7 @@ void move(particle_t& p, double size) {
 
 
 std::vector<int> binNeighbors(int bin_index, double size) {
-    std::vector<int> neighbors(9);
+    std::vector<int> neighbors;
     int nbins = size/cutoff;
     int row = bin_index / nbins;
     int col = bin_index % nbins;
@@ -138,7 +138,7 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
         bins[bincol + nbins*binrow].insert(i);
     }
     for (int i = 0; i < nbins*nbins; ++i) {
-        neighbors.push_back(binNeighbors(nbins*nbins-1-i,size));
+        neighbors.push_back(binNeighbors(i,size));
     }
 }
 
@@ -166,23 +166,23 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
         }
     }
     //
-    std::vector<std::pair<int,int>> movers;
+    std::set<std::pair<int,int>> movers;
     // Move Particles
-    for (int ii = 0; ii < nbins*nbins; ii++) {
-        for (const int& i : bins[ii]) {
-            int binrow_ini = parts[i].y / bin_size;
-            int bincol_ini = parts[i].x / bin_size;
-            move(parts[i], size);
-            int binrow_fin = parts[i].y / bin_size;
-            int bincol_fin = parts[i].x / bin_size;
-            if (binrow_ini != binrow_fin || bincol_ini != bincol_fin) {
-                std::pair<int,int> temp(i,bincol_ini + binrow_ini*nbins);
-                movers.push_back(temp);
-            }
+    for (int i = 0; i < num_parts; i++) {
+        int binrow_ini = parts[i].y / bin_size;
+        int bincol_ini = parts[i].x / bin_size;
+        move(parts[i], size);
+        int binrow_fin = parts[i].y / bin_size;
+        int bincol_fin = parts[i].x / bin_size;
+        if (binrow_ini != binrow_fin || bincol_ini != bincol_fin) {
+            std::pair<int,int> temp(i,bincol_ini + binrow_ini*nbins);
+            movers.insert(temp);
         }
     }
     // Update bins
+    std::cout << "New step" << "\n";
     for (std::pair<int,int> i : movers) {
+        std::cout << i.first << "\n";
         bins[i.second].erase(i.first);
         int binrow = parts[i.first].y / bin_size;
         int bincol = parts[i.first].x / bin_size;
