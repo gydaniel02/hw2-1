@@ -79,7 +79,7 @@ inline int calc_blocked_index(double x, double y, int nbins) {
 }
 
 // **Initialize Simulation**
-void init_simulation(particle_t* __restrict parts, int num_parts, double size, double bin_size_param) {
+void init_simulation(particle_t* __restrict parts, int num_parts, double size, double bin_size_param, int block_size) {
     if (size <= 0 || bin_size_param <= 0 || num_parts <= 0 || !parts) {
         std::cerr << "Invalid parameters: size=" << size
                   << ", bin_size=" << bin_size_param
@@ -116,7 +116,7 @@ void init_simulation(particle_t* __restrict parts, int num_parts, double size, d
 }
 
 // **Simulate One Step**
-void simulate_one_step(particle_t* __restrict parts, int num_parts, double size, int block_size) {
+void simulate_one_step(particle_t* __restrict parts, int num_parts, double size) {
     int total_bins = nbins * nbins;
 
     // Reset accelerations and compute forces
