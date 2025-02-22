@@ -4,11 +4,11 @@
 #include <math.h>
 #include <vector>
 #include <set>
-#include <iostream>
-#define sizemult 1.2
+
+#define sizemult 1
 
 // Put any static global variables here that you will use throughout the simulation.
-void apply_force(particle_t& particle, particle_t& neighbor) {
+inline void apply_force(particle_t& particle, particle_t& neighbor) {
     // Calculate Distance
     double dx = neighbor.x - particle.x;
     double dy = neighbor.y - particle.y;
@@ -28,7 +28,7 @@ void apply_force(particle_t& particle, particle_t& neighbor) {
     #pragma omp atomic
     particle.ay += coef * dy;
 }
-double get_ax(double particlex, double particley, double neighborx, double neighbory) {
+inline double get_ax(double particlex, double particley, double neighborx, double neighbory) {
     // Calculate Distance
     double dx = neighborx - particlex;
     double dy = neighbory - particley;
@@ -45,7 +45,7 @@ double get_ax(double particlex, double particley, double neighborx, double neigh
     double coef = (1 - cutoff / r) / r2 / mass;
     return coef * dx;
 }
-double get_ay(double particlex, double particley, double neighborx, double neighbory) {
+inline double get_ay(double particlex, double particley, double neighborx, double neighbory) {
     // Calculate Distance
     double dx = neighborx - particlex;
     double dy = neighbory - particley;
@@ -63,7 +63,7 @@ double get_ay(double particlex, double particley, double neighborx, double neigh
     return coef * dy;
 }
 
-void move(particle_t& p, double size) {
+inline void move(particle_t& p, double size) {
     // Slightly simplified Velocity Verlet integration
     // Conserves energy better than explicit Euler method
     p.vx += p.ax * dt;
@@ -85,7 +85,7 @@ void move(particle_t& p, double size) {
 static std::vector<std::set<int>> bins;
 
 
-std::vector<int> binNeighbors(int bin_index, double size) {
+inline std::vector<int> binNeighbors(int bin_index, double size) {
     std::vector<int> neighbors;
     int nbins = size/(sizemult*cutoff);
     int row = bin_index / nbins;
@@ -158,7 +158,6 @@ std::vector<int> binNeighbors(int bin_index, double size) {
 }
 // Initialize globals
 std::vector<std::vector<int>> neighbors;
-
 void init_simulation(particle_t* parts, int num_parts, double size) {
 	// You can use this space to initialize static, global data objects
     // that you may need. This function will be called once before the
@@ -179,15 +178,11 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
         neighbors.push_back(binNeighbors(i,size));
     }
 }
-
-
-
 void simulate_one_step(particle_t* parts, int num_parts, double size) {
     int nbins = size/(sizemult*cutoff);
     double bin_size = size/nbins;
     int id = omp_get_thread_num();
     int numthreads = omp_get_num_threads();
-    //std::vector<int> neighbors(9);
     // Compute forces
     // For every bin
     #pragma omp for schedule(static)
