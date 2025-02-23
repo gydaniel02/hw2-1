@@ -1,4 +1,4 @@
-#include "common.h" // Assumes definitions for particle_t, cutoff, min_r, mass, dt
+#include "common.h"
 #include <cmath>
 #include <vector>
 
@@ -6,8 +6,8 @@
 static std::vector<std::vector<int>> bins;      // Bins storing particle indices
 static std::vector<std::vector<int>> neighbors; // Neighbors for each bin
 
-// Optimized apply_force function
-inline void apply_force(particle_t* restrict particle, particle_t* restrict neighbor) {
+// Corrected apply_force function
+inline void apply_force(particle_t* __restrict particle, particle_t* __restrict neighbor) {
     double dx = neighbor->x - particle->x;
     double dy = neighbor->y - particle->y;
     double r2 = dx * dx + dy * dy;
@@ -21,8 +21,8 @@ inline void apply_force(particle_t* restrict particle, particle_t* restrict neig
     particle->ay += coef * dy;
 }
 
-// Optimized move function
-inline void move(particle_t* restrict p, double size) {
+// Corrected move function
+inline void move(particle_t* __restrict p, double size) {
     p->vx += p->ax * dt;
     p->vy += p->ay * dt;
     p->x += p->vx * dt;
@@ -38,7 +38,7 @@ inline void move(particle_t* restrict p, double size) {
     }
 }
 
-// Compute neighboring bins for a given bin
+// binNeighbors function (unchanged, included for completeness)
 std::vector<int> binNeighbors(int bin_index, double size) {
     std::vector<int> neighbors;
     int nbins = size / cutoff;
@@ -103,7 +103,7 @@ std::vector<int> binNeighbors(int bin_index, double size) {
     return neighbors;
 }
 
-// Initialize the simulation
+// init_simulation (unchanged, included for completeness)
 void init_simulation(particle_t* parts, int num_parts, double size) {
     int nbins = size / cutoff;
     double bin_size = size / nbins;
@@ -122,7 +122,7 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
     }
 }
 
-// Simulate one time step
+// simulate_one_step with verified calls
 void simulate_one_step(particle_t* parts, int num_parts, double size) {
     int nbins = size / cutoff;
     double bin_size = size / nbins;
@@ -133,7 +133,7 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
             parts[i].ax = parts[i].ay = 0;
             for (int jj : neighbors[ii]) {
                 for (int j : bins[jj]) {
-                    apply_force(&parts[i], &parts[j]);
+                    apply_force(&parts[i], &parts[j]); // Correct call with two arguments
                 }
             }
         }
@@ -141,7 +141,7 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
 
     // Move particles
     for (int i = 0; i < num_parts; i++) {
-        move(&parts[i], size);
+        move(&parts[i], size); // Correct call with two arguments
     }
 
     // Rebuild bins
