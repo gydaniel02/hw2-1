@@ -1,15 +1,15 @@
-#include "common.h"
+#include "common.h" // Assumes definitions for particle_t, cutoff, min_r, mass, dt
 #include <cmath>
 #include <vector>
 
 // Global data structures
 static std::vector<std::vector<int>> bins;      // Bins storing particle indices
-static std::vector<std::vector<int>> neighbors; // All neighbors for each bin (including self)
+static std::vector<std::vector<int>> neighbors; // Neighbors for each bin
 
-// Original apply_force function
-void apply_force(particle_t& particle, particle_t& neighbor) {
-    double dx = neighbor.x - particle.x;
-    double dy = neighbor.y - particle.y;
+// Optimized apply_force function
+inline void apply_force(particle_t* restrict particle, particle_t* restrict neighbor) {
+    double dx = neighbor->x - particle->x;
+    double dy = neighbor->y - particle->y;
     double r2 = dx * dx + dy * dy;
 
     if (r2 > cutoff * cutoff) return;
@@ -17,28 +17,28 @@ void apply_force(particle_t& particle, particle_t& neighbor) {
     r2 = fmax(r2, min_r * min_r);
     double r = sqrt(r2);
     double coef = (1 - cutoff / r) / r2 / mass;
-    particle.ax += coef * dx;
-    particle.ay += coef * dy;
+    particle->ax += coef * dx;
+    particle->ay += coef * dy;
 }
 
-// Integrate the ODE (unchanged)
-void move(particle_t& p, double size) {
-    p.vx += p.ax * dt;
-    p.vy += p.ay * dt;
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
+// Optimized move function
+inline void move(particle_t* restrict p, double size) {
+    p->vx += p->ax * dt;
+    p->vy += p->ay * dt;
+    p->x += p->vx * dt;
+    p->y += p->vy * dt;
 
-    while (p.x < 0 || p.x > size) {
-        p.x = p.x < 0 ? -p.x : 2 * size - p.x;
-        p.vx = -p.vx;
+    while (p->x < 0 || p->x > size) {
+        p->x = p->x < 0 ? -p->x : 2 * size - p->x;
+        p->vx = -p->vx;
     }
-    while (p.y < 0 || p.y > size) {
-        p.y = p.y < 0 ? -p.y : 2 * size - p.y;
-        p.vy = -p.vy;
+    while (p->y < 0 || p->y > size) {
+        p->y = p->y < 0 ? -p->y : 2 * size - p->y;
+        p->vy = -p->vy;
     }
 }
 
-// Compute all neighboring bins for a given bin (unchanged)
+// Compute neighboring bins for a given bin
 std::vector<int> binNeighbors(int bin_index, double size) {
     std::vector<int> neighbors;
     int nbins = size / cutoff;
@@ -53,51 +53,51 @@ std::vector<int> binNeighbors(int bin_index, double size) {
     bool botedge = (row == 0);
 
     if (botedge) {
-        neighbors.push_back(col + (row + 1) * nbins); // top neighbor
+        neighbors.push_back(col + (row + 1) * nbins); // top
         if (leftedge) {
-            neighbors.push_back(col + 1 + row * nbins); // right neighbor
-            neighbors.push_back(col + 1 + (row + 1) * nbins); // top right neighbor
+            neighbors.push_back(col + 1 + row * nbins); // right
+            neighbors.push_back(col + 1 + (row + 1) * nbins); // top right
         } else if (rightedge) {
-            neighbors.push_back(col - 1 + row * nbins); // left neighbor
-            neighbors.push_back(col - 1 + (row + 1) * nbins); // top left neighbor
+            neighbors.push_back(col - 1 + row * nbins); // left
+            neighbors.push_back(col - 1 + (row + 1) * nbins); // top left
         } else {
-            neighbors.push_back(col + 1 + row * nbins); // right neighbor
-            neighbors.push_back(col + 1 + (row + 1) * nbins); // top right neighbor
-            neighbors.push_back(col - 1 + row * nbins); // left neighbor
-            neighbors.push_back(col - 1 + (row + 1) * nbins); // top left neighbor
+            neighbors.push_back(col + 1 + row * nbins); // right
+            neighbors.push_back(col + 1 + (row + 1) * nbins); // top right
+            neighbors.push_back(col - 1 + row * nbins); // left
+            neighbors.push_back(col - 1 + (row + 1) * nbins); // top left
         }
     } else if (topedge) {
-        neighbors.push_back(col + (row - 1) * nbins); // bottom neighbor
+        neighbors.push_back(col + (row - 1) * nbins); // bottom
         if (leftedge) {
-            neighbors.push_back(col + 1 + row * nbins); // right neighbor
-            neighbors.push_back(col + 1 + (row - 1) * nbins); // bottom right neighbor
+            neighbors.push_back(col + 1 + row * nbins); // right
+            neighbors.push_back(col + 1 + (row - 1) * nbins); // bottom right
         } else if (rightedge) {
-            neighbors.push_back(col - 1 + row * nbins); // left neighbor
-            neighbors.push_back(col - 1 + (row - 1) * nbins); // bottom left neighbor
+            neighbors.push_back(col - 1 + row * nbins); // left
+            neighbors.push_back(col - 1 + (row - 1) * nbins); // bottom left
         } else {
-            neighbors.push_back(col + 1 + row * nbins); // right neighbor
-            neighbors.push_back(col + 1 + (row - 1) * nbins); // bottom right neighbor
-            neighbors.push_back(col - 1 + row * nbins); // left neighbor
-            neighbors.push_back(col - 1 + (row - 1) * nbins); // bottom left neighbor
+            neighbors.push_back(col + 1 + row * nbins); // right
+            neighbors.push_back(col + 1 + (row - 1) * nbins); // bottom right
+            neighbors.push_back(col - 1 + row * nbins); // left
+            neighbors.push_back(col - 1 + (row - 1) * nbins); // bottom left
         }
     } else {
-        neighbors.push_back(col + (row - 1) * nbins); // bottom neighbor
-        neighbors.push_back(col + (row + 1) * nbins); // top neighbor
+        neighbors.push_back(col + (row - 1) * nbins); // bottom
+        neighbors.push_back(col + (row + 1) * nbins); // top
         if (leftedge) {
-            neighbors.push_back(col + 1 + row * nbins); // right neighbor
-            neighbors.push_back(col + 1 + (row - 1) * nbins); // bottom right neighbor
-            neighbors.push_back(col + 1 + (row + 1) * nbins); // top right neighbor
+            neighbors.push_back(col + 1 + row * nbins); // right
+            neighbors.push_back(col + 1 + (row - 1) * nbins); // bottom right
+            neighbors.push_back(col + 1 + (row + 1) * nbins); // top right
         } else if (rightedge) {
-            neighbors.push_back(col - 1 + row * nbins); // left neighbor
-            neighbors.push_back(col - 1 + (row - 1) * nbins); // bottom left neighbor
-            neighbors.push_back(col - 1 + (row + 1) * nbins); // top left neighbor
+            neighbors.push_back(col - 1 + row * nbins); // left
+            neighbors.push_back(col - 1 + (row - 1) * nbins); // bottom left
+            neighbors.push_back(col - 1 + (row + 1) * nbins); // top left
         } else {
-            neighbors.push_back(col - 1 + row * nbins); // left neighbor
-            neighbors.push_back(col - 1 + (row - 1) * nbins); // bottom left neighbor
-            neighbors.push_back(col - 1 + (row + 1) * nbins); // top left neighbor
-            neighbors.push_back(col + 1 + row * nbins); // right neighbor
-            neighbors.push_back(col + 1 + (row - 1) * nbins); // bottom right neighbor
-            neighbors.push_back(col + 1 + (row + 1) * nbins); // top right neighbor
+            neighbors.push_back(col - 1 + row * nbins); // left
+            neighbors.push_back(col - 1 + (row - 1) * nbins); // bottom left
+            neighbors.push_back(col - 1 + (row + 1) * nbins); // top left
+            neighbors.push_back(col + 1 + row * nbins); // right
+            neighbors.push_back(col + 1 + (row - 1) * nbins); // bottom right
+            neighbors.push_back(col + 1 + (row + 1) * nbins); // top right
         }
     }
     return neighbors;
@@ -108,7 +108,6 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
     int nbins = size / cutoff;
     double bin_size = size / nbins;
 
-    // Initialize bins
     bins.resize(nbins * nbins);
     for (int i = 0; i < num_parts; i++) {
         int binrow = parts[i].y / bin_size;
@@ -117,7 +116,6 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
         bins[bin_index].push_back(i);
     }
 
-    // Compute neighbors
     neighbors.resize(nbins * nbins);
     for (int i = 0; i < nbins * nbins; i++) {
         neighbors[i] = binNeighbors(i, size);
@@ -135,7 +133,7 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
             parts[i].ax = parts[i].ay = 0;
             for (int jj : neighbors[ii]) {
                 for (int j : bins[jj]) {
-                    apply_force(parts[i], parts[j]);
+                    apply_force(&parts[i], &parts[j]);
                 }
             }
         }
@@ -143,7 +141,7 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
 
     // Move particles
     for (int i = 0; i < num_parts; i++) {
-        move(parts[i], size);
+        move(&parts[i], size);
     }
 
     // Rebuild bins
