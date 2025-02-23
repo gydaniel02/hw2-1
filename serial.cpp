@@ -180,9 +180,9 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
         }
     }
     // Update bins
-    std::cout << "New step" << "\n";
+    //std::cout << "New step" << "\n";
     for (std::pair<int,int> i : movers) {
-        std::cout << i.first << "\n";
+        //std::cout << i.first << "\n";
         bins[i.second].erase(i.first);
         int binrow = parts[i.first].y / bin_size;
         int bincol = parts[i.first].x / bin_size;
